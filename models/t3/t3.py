@@ -18,14 +18,14 @@ from transformers.generation.logits_process import (
     TopPLogitsWarper,
     MinPLogitsWarper,
 )
-from .modules.learned_pos_emb import LearnedPositionEmbeddings
+from models.t3.modules.learned_pos_emb import LearnedPositionEmbeddings
 
-from .modules.cond_enc import T3CondEnc, T3Cond
-from .modules.t3_config import T3Config
-from .llama_configs import LLAMA_CONFIGS
-from .inference.t3_hf_backend import T3HuggingfaceBackend
-from .inference.alignment_stream_analyzer import AlignmentStreamAnalyzer
-from ..utils import AttrDict
+from models.t3.modules.cond_enc import T3CondEnc, T3Cond
+from models.t3.modules.t3_config import T3Config
+from models.t3.llama_configs import LLAMA_CONFIGS
+from models.t3.inference.t3_hf_backend import T3HuggingfaceBackend
+from models.t3.inference.alignment_stream_analyzer import AlignmentStreamAnalyzer
+from models.utils import AttrDict
 
 
 logger = logging.getLogger(__name__)

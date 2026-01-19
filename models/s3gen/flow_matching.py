@@ -14,8 +14,8 @@
 import threading
 import torch
 import torch.nn.functional as F
-from .matcha.flow_matching import BASECFM
-from .configs import CFM_PARAMS
+from models.s3gen.matcha.flow_matching import BASECFM
+from models.s3gen.configs import CFM_PARAMS
 from tqdm import tqdm
 
 

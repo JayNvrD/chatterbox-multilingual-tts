@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from .utils.mask import make_pad_mask
-from .configs import CFM_PARAMS
+from models.s3gen.utils.mask import make_pad_mask
+from models.s3gen.configs import CFM_PARAMS
 from omegaconf import DictConfig
 
 

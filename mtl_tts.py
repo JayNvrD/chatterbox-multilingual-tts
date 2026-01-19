@@ -29,13 +29,13 @@ import torch.nn.functional as F
 from safetensors.torch import load_file as load_safetensors
 from huggingface_hub import snapshot_download, hf_hub_download
 
-from .models.t3 import T3
-from .models.t3.modules.t3_config import T3Config
-from .models.s3tokenizer import S3_SR, drop_invalid_tokens
-from .models.s3gen import S3GEN_SR, S3Gen
-from .models.tokenizers import MTLTokenizer
-from .models.voice_encoder import VoiceEncoder
-from .models.t3.modules.cond_enc import T3Cond
+from models.t3 import T3
+from models.t3.modules.t3_config import T3Config
+from models.s3tokenizer import S3_SR, drop_invalid_tokens
+from models.s3gen import S3GEN_SR, S3Gen
+from models.tokenizers import MTLTokenizer
+from models.voice_encoder import VoiceEncoder
+from models.t3.modules.cond_enc import T3Cond
 
 
 # HuggingFace repositories
@@ -311,7 +311,7 @@ class ChatterboxMultilingualTTS:
             meanflow_weights_path = hf_hub_download(
                 repo_id=TURBO_REPO_ID,
                 filename="s3gen_meanflow.safetensors",
-                token=os.getenv("HF_TOKEN") or True,
+                token=os.getenv("HF_TOKEN"),
             )
         
         return cls.from_local(

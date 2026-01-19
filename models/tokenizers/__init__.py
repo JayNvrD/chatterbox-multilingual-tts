@@ -1,1 +1,1 @@
-from .tokenizer import EnTokenizer, MTLTokenizer
+from models.tokenizers.tokenizer import EnTokenizer, MTLTokenizer

@@ -9,8 +9,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 
-from .config import VoiceEncConfig
-from .melspec import melspectrogram
+from models.voice_encoder.config import VoiceEncConfig
+from models.voice_encoder.melspec import melspectrogram
 
 
 def pack(arrays, seq_len: int=None, pad_value=0):
