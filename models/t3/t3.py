@@ -349,11 +349,9 @@ class T3(nn.Module):
 
         # ---- Generation Loop using kv_cache ----
         
-        # Robust Fix: Calculate an expected token limit to prevent massive overruns
-        # Standard speech rate is roughly 15-30 tokens per second.
-        # Text tokens are roughly phoneme-level. A 1.5x buffer is very safe.
         num_text_tokens = embeds.size(1) - len_cond
-        expected_max_tokens = int(num_text_tokens * 8) + 100 # Very generous buffer
+        # Stricter Fix: 4x text length + 50 tokens is sufficient for ~25Hz tokens
+        expected_max_tokens = int(num_text_tokens * 4) + 50
         max_new_tokens = min(max_new_tokens or self.hp.max_speech_tokens, expected_max_tokens)
         
         consecutive_repeats = 0

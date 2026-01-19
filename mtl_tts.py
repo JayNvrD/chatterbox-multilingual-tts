@@ -72,11 +72,12 @@ SUPPORTED_LANGUAGES = {
 
 
 def normalize_acronyms(text: str) -> str:
-    """Expand acronyms like 'SDPA' to 'S.D.P.A.' to help TTS pronunciation."""
+    """Expand acronyms like 'SDPA' to 'S.D.P.A.' with spaces to ensure phoneme separation."""
     import re
     def replace_acronym(match):
         acronym = match.group(0)
-        return ".".join(list(acronym)) + "."
+        # Expansion to "S. D. P. A. " forces the tokenizer to treat them as individual letters
+        return " ".join([f"{c}." for c in acronym]) + " "
     
     # Match words that are 2-5 uppercase letters long
     return re.sub(r'\b[A-Z]{2,5}\b', replace_acronym, text)
