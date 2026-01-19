@@ -379,6 +379,7 @@ class ChatterboxMultilingualTTS:
         repetition_penalty: float = 2.0,
         min_p: float = 0.05,
         top_p: float = 1.0,
+        apply_post_processing: bool = True,
     ) -> torch.Tensor:
         """
         Generate speech from text.
@@ -393,6 +394,7 @@ class ChatterboxMultilingualTTS:
             repetition_penalty: Repetition penalty
             min_p: Minimum probability threshold
             top_p: Top-p sampling threshold
+            apply_post_processing: If False, skip watermarking and trimming (faster for streaming)
             
         Returns:
             Audio waveform as torch.Tensor with shape (1, samples)
@@ -435,6 +437,7 @@ class ChatterboxMultilingualTTS:
 
         with torch.inference_mode():
             # T3: Text -> Speech Tokens
+            t3_start = time.perf_counter()
             speech_tokens = self.t3.inference(
                 t3_cond=self.conds.t3,
                 text_tokens=text_tokens,
@@ -445,6 +448,7 @@ class ChatterboxMultilingualTTS:
                 min_p=min_p,
                 top_p=top_p,
             )
+            t3_time = (time.perf_counter() - t3_start) * 1000
             # Extract only the conditional batch
             speech_tokens = speech_tokens[0]
 
@@ -453,18 +457,22 @@ class ChatterboxMultilingualTTS:
             speech_tokens = speech_tokens.to(self.device)
 
             # S3Gen: Speech Tokens -> Waveform
+            s3_start = time.perf_counter()
             wav, _ = self.s3gen.inference(
                 speech_tokens=speech_tokens,
                 ref_dict=self.conds.gen,
                 n_cfm_timesteps=self.n_cfm_timesteps,  # Use configured CFM steps
             )
+            s3_time = (time.perf_counter() - s3_start) * 1000
+            print(f"  - T3 inference: {t3_time:.1f}ms")
+            print(f"  - S3Gen inference: {s3_time:.1f}ms")
             
             wav = wav.squeeze(0).detach().cpu().numpy()
             
-            # Proper Fix: Aggressively trim silence/noise from the end
-            # top_db=40 is fairly strict but safe for speech
-            wav, _ = librosa.effects.trim(wav, top_db=40, frame_length=512, hop_length=128)
+            if apply_post_processing:
+                # Proper Fix: Aggressively trim silence/noise from the end
+                # top_db=40 is fairly strict but safe for speech
+                wav, _ = librosa.effects.trim(wav, top_db=40, frame_length=512, hop_length=128)
+                wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
             
-            watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
-            
-        return torch.from_numpy(watermarked_wav).unsqueeze(0)
+        return torch.from_numpy(wav).unsqueeze(0)
