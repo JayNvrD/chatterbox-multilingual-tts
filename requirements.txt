@@ -1,0 +1,25 @@
+# Chatterbox Multilingual TTS - Requirements
+# Install with: pip install -r requirements.txt
+
+# PyTorch (CUDA 11.8 or 12.1)
+torch>=2.0.0,<2.7.0
+torchaudio>=2.0.0,<2.7.0
+
+# Core dependencies
+numpy>=1.24.0,<1.26.0
+librosa>=0.10.0
+transformers>=4.40.0
+diffusers>=0.29.0
+safetensors>=0.4.0
+huggingface_hub>=0.20.0
+
+# Audio processing
+resemble-perth>=1.0.1
+conformer>=0.3.2
+s3tokenizer
+pyloudnorm
+omegaconf
+
+# Multilingual tokenizers
+spacy-pkuseg
+pykakasi>=2.3.0
