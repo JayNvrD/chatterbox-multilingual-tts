@@ -155,10 +155,12 @@ class S3Token2Mel(torch.nn.Module):
         ref_speech_tokens, ref_speech_token_lens = self.tokenizer(ref_wav_16.float())
 
         # Make sure mel_len = 2 * stoken_len (happens when the input is not padded to multiple of 40ms)
-        if ref_mels_24.shape[1] != 2 * ref_speech_tokens.shape[1]:
-            logging.warning(
-                "Reference mel length is not equal to 2 * reference token length.\n"
-            )
+        diff = ref_mels_24.shape[1] - 2 * ref_speech_tokens.shape[1]
+        if diff != 0:
+            if abs(diff) > 2:
+                logging.warning(
+                    f"Reference mel length mismatch: mel={ref_mels_24.shape[1]}, tokens={ref_speech_tokens.shape[1]} (diff={diff}). Trimming tokens to align."
+                )
             ref_speech_tokens = ref_speech_tokens[:, :ref_mels_24.shape[1] // 2]
             ref_speech_token_lens[0] = ref_speech_tokens.shape[1]
 

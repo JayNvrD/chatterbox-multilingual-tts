@@ -90,8 +90,13 @@ class AttentionQKV(nn.Module):
         return torch.einsum("bhts,bhls->bhlt", attn, v)
 
     def flash_attention(self, q, k, v, mask=None):
-        config = self.flash_config if self.flash_config else {}
-        with torch.backends.cuda.sdp_kernel(**config):
+        from torch.nn.attention import sdpa_kernel, SDPBackend
+        backends = []
+        if self.flash_config.get('enable_flash'): backends.append(SDPBackend.FLASH_ATTENTION)
+        if self.flash_config.get('enable_mem_efficient'): backends.append(SDPBackend.EFFICIENT_ATTENTION)
+        if self.flash_config.get('enable_math'): backends.append(SDPBackend.MATH)
+        
+        with sdpa_kernel(backends):
             out = F.scaled_dot_product_attention(
                 q, k, v,
                 attn_mask=mask,

@@ -18,6 +18,7 @@ Usage:
     model = ChatterboxMultilingualTTS.from_pretrained(device="cuda", use_meanflow=False)
 """
 
+from typing import Optional, List, Union
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -70,13 +71,27 @@ SUPPORTED_LANGUAGES = {
 }
 
 
+def normalize_acronyms(text: str) -> str:
+    """Expand acronyms like 'SDPA' to 'S.D.P.A.' to help TTS pronunciation."""
+    import re
+    def replace_acronym(match):
+        acronym = match.group(0)
+        return ".".join(list(acronym)) + "."
+    
+    # Match words that are 2-5 uppercase letters long
+    return re.sub(r'\b[A-Z]{2,5}\b', replace_acronym, text)
+
+
 def punc_norm(text: str) -> str:
     """
     Quick cleanup func for punctuation from LLMs or
     containing chars not seen often in the dataset
     """
-    if len(text) == 0:
+    if not text:
         return "You need to add some text for me to talk."
+    
+    # Normalize acronyms
+    text = normalize_acronyms(text)
 
     # Capitalise first letter
     if text[0].islower():
@@ -271,6 +286,7 @@ class ChatterboxMultilingualTTS:
         device: str = "cuda",
         use_meanflow: bool = True,
         n_cfm_timesteps: int = None,
+        token: Optional[str] = None,
     ) -> 'ChatterboxMultilingualTTS':
         """
         Load from HuggingFace Hub.
@@ -300,7 +316,7 @@ class ChatterboxMultilingualTTS:
                     "conds.pt", 
                     "Cangjie5_TC.json"
                 ],
-                token=os.getenv("HF_TOKEN"),
+                token=token,
             )
         )
         
@@ -311,7 +327,7 @@ class ChatterboxMultilingualTTS:
             meanflow_weights_path = hf_hub_download(
                 repo_id=TURBO_REPO_ID,
                 filename="s3gen_meanflow.safetensors",
-                token=os.getenv("HF_TOKEN"),
+                token=token,
             )
         
         return cls.from_local(
@@ -443,6 +459,11 @@ class ChatterboxMultilingualTTS:
             )
             
             wav = wav.squeeze(0).detach().cpu().numpy()
+            
+            # Proper Fix: Aggressively trim silence/noise from the end
+            # top_db=40 is fairly strict but safe for speech
+            wav, _ = librosa.effects.trim(wav, top_db=40, frame_length=512, hop_length=128)
+            
             watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
             
         return torch.from_numpy(watermarked_wav).unsqueeze(0)

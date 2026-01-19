@@ -275,17 +275,16 @@ class T3(nn.Module):
         # TODO? synchronize the expensive compile function
         # with self.compile_lock:
         if not self.compiled:
-            # Default to None for English models, only create for multilingual
+            # Disable alignment stream analyzer for SDPA compatibility on GPU
             alignment_stream_analyzer = None
-            if self.hp.is_multilingual:
-                alignment_stream_analyzer = AlignmentStreamAnalyzer(
-                    self.tfmr,
-                    None,
-                    text_tokens_slice=(len_cond, len_cond + text_tokens.size(-1)),
-                    alignment_layer_idx=9, # TODO: hparam or something?
-                    eos_idx=self.hp.stop_speech_token,
-                )
-                assert alignment_stream_analyzer.eos_idx == self.hp.stop_speech_token
+            # if self.hp.is_multilingual:
+            #     alignment_stream_analyzer = AlignmentStreamAnalyzer(
+            #         self.tfmr,
+            #         None,
+            #         text_tokens_slice=(len_cond, len_cond + text_tokens.size(-1)),
+            #         alignment_layer_idx=9,
+            #         eos_idx=self.hp.stop_speech_token,
+            #     )
 
             patched_model = T3HuggingfaceBackend(
                 config=self.cfg,
@@ -341,7 +340,7 @@ class T3(nn.Module):
             inputs_embeds=inputs_embeds,
             past_key_values=None,
             use_cache=True,
-            output_attentions=True,
+            output_attentions=False,
             output_hidden_states=True,
             return_dict=True,
         )
@@ -349,6 +348,17 @@ class T3(nn.Module):
         past = output.past_key_values
 
         # ---- Generation Loop using kv_cache ----
+        
+        # Robust Fix: Calculate an expected token limit to prevent massive overruns
+        # Standard speech rate is roughly 15-30 tokens per second.
+        # Text tokens are roughly phoneme-level. A 1.5x buffer is very safe.
+        num_text_tokens = embeds.size(1) - len_cond
+        expected_max_tokens = int(num_text_tokens * 8) + 100 # Very generous buffer
+        max_new_tokens = min(max_new_tokens or self.hp.max_speech_tokens, expected_max_tokens)
+        
+        consecutive_repeats = 0
+        last_token_id = None
+
         for i in tqdm(range(max_new_tokens), desc="Sampling", dynamic_ncols=True):
             logits_step = output.logits[:, -1, :]
             # CFG combine  → (1, V)
@@ -381,6 +391,18 @@ class T3(nn.Module):
             probs = torch.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)  # shape: (B, 1)
 
+            # Robust Fix: Detect token repetition (3x identical tokens is a crash)
+            current_token_id = next_token.item()
+            if current_token_id == last_token_id:
+                consecutive_repeats += 1
+            else:
+                consecutive_repeats = 0
+            last_token_id = current_token_id
+
+            if consecutive_repeats >= 3:
+                logger.warning(f"🚨 Token repetition detected ({current_token_id}). Forcing stop to prevent noise.")
+                break
+
             predicted.append(next_token)
             generated_ids = torch.cat([generated_ids, next_token], dim=1)
 
@@ -400,7 +422,7 @@ class T3(nn.Module):
             output = self.patched_model(
                 inputs_embeds=next_token_embed,
                 past_key_values=past,
-                output_attentions=True,
+                output_attentions=False,
                 output_hidden_states=True,
                 return_dict=True,
             )
