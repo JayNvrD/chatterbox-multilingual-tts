@@ -57,7 +57,13 @@ Repository = "https://github.com/resemble-ai/chatterbox"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["chatterbox_mtl*"]
+include = ["models*"]
+
+[tool.setuptools.package-dir]
+"" = "."
+
+[tool.setuptools.py-modules]
+include = ["mtl_tts"]
 
 [tool.black]
 line-length = 100
