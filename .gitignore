@@ -32,20 +32,21 @@ env/
 # Test files (don't deploy)
 test_*.py
 
-# Reference repos (cloned for development, don't deploy)
+# Reference repos & Examples
 CosyVoice/
 chatterbox-streaming/
-
-# Example scripts (local testing only)
 example_*.py
 gradio_*.py
-
-# Notebooks
 notebooks/
 *.ipynb
 .ipynb_checkpoints/
 
-# Model weights (downloaded at runtime)
+# Personal Project Files (Modal/LiveKit)
+# kept local for deployment but excluded from public repo
+deploy/
+livekit/
+
+# Model weights
 *.pt
 *.safetensors
 *.bin
