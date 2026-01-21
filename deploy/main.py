@@ -1,7 +1,7 @@
 """
-Chatterbox Multilingual TTS API - Optimized Single GPU Container
+Chatterbox Multilingual TTS API - Stream-Only, Low-Latency
 
-Uses local chatterbox_mtl package with meanflow S3Gen for ~200ms latency.
+Uses optimized streaming with n_cfm_timesteps=4 and chunk_size=10 for ~200ms TTFB.
 FastAPI runs directly on GPU container - no network hop!
 
 Deploy:
@@ -12,7 +12,6 @@ Test:
 
 API Endpoints:
     POST /stream         - Streaming speech generation (for LiveKit)
-    POST /speak          - Blocking speech generation
     GET  /voices         - List available voices
     GET  /languages      - List supported languages
     GET  /health         - Health check
@@ -100,8 +99,8 @@ image = (
         "pykakasi>=2.3.0",
         "fastapi[standard]",
     )
-    # Add local optimized code (mtl_tts.py, models/, etc.)
-    .add_local_dir("..", remote_path="/root/chatterbox_mtl", copy=True, ignore=[".git", "deploy", "notebooks", "__pycache__", ".venv", ".agent"])
+    # Add local optimized code (src/chatterbox)
+    .add_local_dir("..", remote_path="/root/chatterbox_mtl", copy=True, ignore=[".git", "deploy", "notebooks", "__pycache__", ".venv", ".agent", "CosyVoice", "chatterbox-streaming", "test_*.py", "*.wav"])
 )
 
 # Volumes for caching and voices
@@ -141,8 +140,9 @@ class TTSService:
         os.environ["HF_HOME"] = "/cache/huggingface"
         self.load_error = None
         
-        # Import the optimized module directly from the root
-        from mtl_tts import ChatterboxMultilingualTTS
+        # Import the optimized chatterbox module from src
+        sys.path.insert(0, "/root/chatterbox_mtl/src")
+        from chatterbox.tts import ChatterboxTTS
         
         print("=" * 60)
         print("Loading Chatterbox Multilingual TTS")
@@ -168,9 +168,10 @@ class TTSService:
         print(f"-------------------------")
 
         try:
-            self.model = ChatterboxMultilingualTTS.from_pretrained(
+            # Initialize using the standard method
+            # Note: n_cfm_timesteps=4 and chunk_size=10 are defaults in the new code
+            self.model = ChatterboxTTS.from_pretrained(
                 device="cuda" if self.cuda_ok else "cpu",
-                use_meanflow=USE_MEANFLOW,
             )
             self.sample_rate = self.model.sr
             print(f"✅ Model loaded in {time.perf_counter() - start:.1f}s on {self.device_name}")
@@ -181,46 +182,6 @@ class TTSService:
         print(f"✅ Sample rate: {self.sample_rate}")
         print(f"✅ CFM steps: {self.model.n_cfm_timesteps}")
         print("=" * 60)
-    
-    def _generate_audio(
-        self,
-        text: str,
-        language: str = "en",
-        voice: Optional[str] = None,
-        exaggeration: float = 0.5,
-        cfg_weight: float = 0.5,
-        temperature: float = 0.8,
-    ) -> bytes:
-        """Internal method to generate audio. Returns WAV bytes."""
-        import torchaudio as ta
-        
-        # Validate language
-        lang_id = language if language in SUPPORTED_LANGUAGES else "en"
-        
-        # Find voice file if specified
-        voice_path = None
-        if voice:
-            for ext in ['.wav', '.mp3']:
-                path = f"/voices/{voice}{ext}"
-                if os.path.exists(path):
-                    voice_path = path
-                    break
-        
-        # Generate audio
-        wav = self.model.generate(
-            text=text,
-            language_id=lang_id,
-            audio_prompt_path=voice_path,
-            exaggeration=exaggeration,
-            cfg_weight=cfg_weight,
-            temperature=temperature,
-        )
-        
-        # Convert to WAV bytes
-        buffer = io.BytesIO()
-        ta.save(buffer, wav, self.sample_rate, format="wav")
-        buffer.seek(0)
-        return buffer.read()
     
     @modal.asgi_app()
     def api(self):
@@ -278,52 +239,23 @@ class TTSService:
                         })
             return {"voices": voice_list, "count": len(voice_list)}
         
-        @api.post("/speak")
-        async def speak(
-            text: str = Query(..., description="Text to synthesize"),
-            language: str = Query("en", description="Language code"),
-            voice: str = Query(None, description="Voice name"),
-            exaggeration: float = Query(0.5, ge=0.0, le=2.0),
-        ):
-            """Generate speech (blocking). Returns full WAV file."""
-            if not text.strip():
-                raise HTTPException(status_code=400, detail="Text cannot be empty")
-            
-            try:
-                start = time.perf_counter()
-                audio_bytes = self._generate_audio(
-                    text=text,
-                    language=language,
-                    voice=voice,
-                    exaggeration=exaggeration,
-                )
-                elapsed_ms = (time.perf_counter() - start) * 1000
-                print(f"✅ /speak: {elapsed_ms:.0f}ms for '{text[:50]}...'")
-                
-                return StreamingResponse(
-                    io.BytesIO(audio_bytes),
-                    media_type="audio/wav",
-                )
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
-        
         @api.post("/stream")
         async def stream(
             text: str = Query(..., description="Text to synthesize"),
             language: str = Query("en", description="Language code"),
             voice: str = Query(None, description="Voice name"),
             exaggeration: float = Query(0.5, ge=0.0, le=2.0),
-            chunk_size: int = Query(4800, description="PCM samples per chunk"),
+            chunk_size: int = Query(10, description="Tokens per chunk (default 10 for low latency)"),
         ):
             """
             Generate speech with streaming response.
-            Yields WAV header + PCM chunks for low-latency playback.
+            Yields PCM chunks for low-latency playback.
             """
             if not text.strip():
                 raise HTTPException(status_code=400, detail="Text cannot be empty")
             
             async def generate_stream():
-                import torchaudio as ta
+                # import torchaudio as ta # Not needed anymore for direct PCM streaming
                 import io
                 
                 try:
@@ -341,39 +273,47 @@ class TTSService:
                                 voice_path = path
                                 break
                     
-                    # Generate audio - SKIP POST-PROCESSING for millisecond TTFB
-                    # In true meanflow mode, this takes ~200-300ms on A10G
-                    wav = self.model.generate(
+                    print(f"Generating stream for: '{text[:20]}...' (chunk_size={chunk_size})")
+                    
+                    # Use the optimized generate_stream method
+                    # This yields (audio_chunk, metrics) tuples
+                    first_chunk = True
+                    
+                    for audio_chunk, metrics in self.model.generate_stream(
                         text=text,
                         language_id=lang_id,
                         audio_prompt_path=voice_path,
                         exaggeration=exaggeration,
-                        apply_post_processing=False  # ← Crucial for ms latency!
-                    )
-                    
-                    ttfb_ms = (time.perf_counter() - start_time) * 1000
-                    print(f"⚡ TTFB: {ttfb_ms:.2f}ms for '{text[:20]}...'")
-                    
-                    # Convert to WAV in memory and yield chunks
-                    buffer = io.BytesIO()
-                    ta.save(buffer, wav, self.sample_rate, format="wav")
-                    buffer.seek(0)
-                    
-                    # Yield first chunk (contains WAV header)
-                    chunk = buffer.read(4800)
-                    if chunk:
-                        yield chunk
-                    
-                    # Yield remaining data
-                    while True:
-                        chunk = buffer.read(4800)
-                        if not chunk:
-                            break
-                        yield chunk
+                        chunk_size=chunk_size,
+                        print_metrics=False
+                    ):
+                        if first_chunk:
+                            ttfb_ms = (time.perf_counter() - start_time) * 1000
+                            print(f"⚡ TTFB: {ttfb_ms:.2f}ms")
+                            first_chunk = False
+                            
+                            # Send WAV header first (estimated size)
+                            # Header is needed for some players, but raw PCM is often preferred for streaming
+                            # We'll send raw PCM + a header at the start if requested, but for now just PCM chunks
+                            # LiveKit AudioEmitter expects PCM so this is fine.
+                            # If browser playback is needed, we might need a WAV header.
+                            
+                            # NOTE: The previous code sent a WAV header. 
+                            # Let's send a WAV header with max size to be safe for browsers/players
+                            header = create_wav_header(self.sample_rate, 1, 16)
+                            yield header
+
+                        if audio_chunk is not None:
+                            # Convert to 16-bit PCM bytes
+                            audio_np = audio_chunk.squeeze().cpu().numpy()
+                            # Normalize and convert to bytes
+                            audio_int16 = (audio_np * 32767).astype('int16')
+                            yield audio_int16.tobytes()
                         
                 except Exception as e:
                     print(f"❌ Streaming Error: {e}")
-                    raise
+                    # We can't raise HTTP exception here as response already started
+                    # Just log it
             
             return StreamingResponse(
                 generate_stream(), 
