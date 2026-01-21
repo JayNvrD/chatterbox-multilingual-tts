@@ -1,10 +1,61 @@
+# Python
 __pycache__/
 *.pyc
-*.wav
-*.mp3
-*.log
-test_*.py
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment
 .env
 .venv
 venv/
-.git/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Audio/Media files (generated)
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# Logs
+*.log
+
+# Test files (don't deploy)
+test_*.py
+
+# Reference repos (cloned for development, don't deploy)
+CosyVoice/
+chatterbox-streaming/
+
+# Example scripts (local testing only)
+example_*.py
+gradio_*.py
+
+# Notebooks
+notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# Model weights (downloaded at runtime)
+*.pt
+*.safetensors
+*.bin
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak
+*.tmp
+info_output.json
