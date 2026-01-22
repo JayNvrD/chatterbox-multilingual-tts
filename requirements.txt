@@ -23,3 +23,8 @@ omegaconf
 # Multilingual tokenizers
 spacy-pkuseg
 pykakasi>=2.3.0
+
+# API & Utils
+fastapi[standard]
+tqdm
+scipy

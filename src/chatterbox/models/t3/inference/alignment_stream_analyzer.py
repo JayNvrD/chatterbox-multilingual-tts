@@ -71,6 +71,9 @@ class AlignmentStreamAnalyzer:
             - When `output_attentions=True`, `LlamaSdpaAttention.forward` calls `LlamaAttention.forward`.
             - `attn_output` has shape [B, H, T0, T0] for the 0th entry, and [B, H, 1, T0+i] for the rest i-th.
             """
+            # Handle SDPA returning None for attention weights
+            if output[1] is None:
+                return  # Skip - SDPA does not support attention output
             step_attention = output[1].cpu() # (B, 16, N, N)
             self.last_aligned_attn = step_attention[0].mean(0) # (N, N)
 
